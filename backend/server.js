@@ -59,18 +59,19 @@ io.on('connection', (socket) => {
         if (driver.pushToken) {
           try {
             await admin.messaging().send({
-              token: driver.pushToken,
-              notification: {
-                title: 'New Ride Nearby 🚕',
-                body: `Tap to view pickup location`
-              },
-               {
-                rideId: id,
-                pickupLat: pickup.lat.toString(),
-                pickupLng: pickup.lng.toString(),
-                screen: 'DriverHome'
-              }
-            });
+  token: driver.pushToken,
+  notification: {
+    title: 'New Ride Nearby 🚕',
+    body: 'Tap to view pickup location'
+  },
+  data: {
+    rideId: id.toString(),
+    pickupLat: pickup.lat.toString(),
+    pickupLng: pickup.lng.toString(),
+    screen: 'DriverHome'
+  }
+});
+
             console.log('Push sent to driver:', driver._id);
           } catch (error) {
             console.error('Error sending to driver:', driver._id, error.message);
@@ -115,3 +116,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
