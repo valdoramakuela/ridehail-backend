@@ -13,6 +13,9 @@ router.post('/submit', upload.fields([
   { name: 'profileImage', maxCount: 1 }
 ]), async (req, res) => {
   try {
+    console.log('Request body:', req.body);
+    console.log('Request files:', req.files);
+
     const {
       userId,
       fullName,
@@ -21,29 +24,49 @@ router.post('/submit', upload.fields([
       plateNumber
     } = req.body;
 
+    // Validate required text fields
+    if (!userId || !fullName || !licenseNumber) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: userId, fullName, licenseNumber'
+      });
+    }
+
     // Create verification object with file paths
     const verificationData = {
       userId,
       fullName,
       licenseNumber,
-      vehicleModel,
-      plateNumber,
+      vehicleModel: vehicleModel || '',
+      plateNumber: plateNumber || '',
       status: 'pending'
     };
 
     // Add file paths if files were uploaded
-    if (req.files.idFront) verificationData.idFront = req.files.idFront[0].filename;
-    if (req.files.licenseFront) verificationData.licenseFront = req.files.licenseFront[0].filename;
-    if (req.files.licenseBack) verificationData.licenseBack = req.files.licenseBack[0].filename;
-    if (req.files.vehicleRegistration) verificationData.vehicleRegistration = req.files.vehicleRegistration[0].filename;
-    if (req.files.profileImage) verificationData.profileImage = req.files.profileImage[0].filename;
+    if (req.files?.idFront && req.files.idFront[0]) {
+      verificationData.idFront = req.files.idFront[0].filename;
+    }
+    if (req.files?.licenseFront && req.files.licenseFront[0]) {
+      verificationData.licenseFront = req.files.licenseFront[0].filename;
+    }
+    if (req.files?.licenseBack && req.files.licenseBack[0]) {
+      verificationData.licenseBack = req.files.licenseBack[0].filename;
+    }
+    if (req.files?.vehicleRegistration && req.files.vehicleRegistration[0]) {
+      verificationData.vehicleRegistration = req.files.vehicleRegistration[0].filename;
+    }
+    if (req.files?.profileImage && req.files.profileImage[0]) {
+      verificationData.profileImage = req.files.profileImage[0].filename;
+    }
+
+    console.log('Verification data to save:', verificationData);
 
     const verification = new Verification(verificationData);
-    await verification.save();
+    const savedVerification = await verification.save();
 
     res.json({
       success: true,
-      verification
+      verification: savedVerification
     });
   } catch (error) {
     console.error('Verification submission error:', error);
@@ -102,7 +125,7 @@ router.post('/action', async (req, res) => {
 
     const verification = await Verification.findByIdAndUpdate(
       id,
-      { status },
+      { status, reviewedAt: new Date() },
       { new: true }
     );
 
@@ -141,7 +164,7 @@ router.patch('/:id/status', async (req, res) => {
 
     const verification = await Verification.findByIdAndUpdate(
       id,
-      { status },
+      { status, reviewedAt: new Date() },
       { new: true }
     );
 
