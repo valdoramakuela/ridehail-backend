@@ -60,29 +60,24 @@ router.post('/submit', upload.fields([
 });
 
 // GET /api/verification/pending
+const BACKEND_URL = 'https://ridehail-backend.onrender.com'; // ← Your Render URL
+
 router.get('/pending', async (req, res) => {
-  try {
-    const pending = await Verification.find({ status: 'pending' });
+  const list = await Verification.find({ status: 'pending' });
 
-    const formatted = pending.map(v => {
-      const doc = v.toObject();
-      const baseUrl = 'https://ridehail-backend.onrender.com/uploads'; // Your backend URL
+  const processedList = list.map(verification => {
+    const baseUrl = `${BACKEND_URL}/uploads`;
+    return {
+      ...verification.toObject(),
+      idFront: verification.idFront ? `${baseUrl}/${verification.idFront}` : null,
+      licenseFront: verification.licenseFront ? `${baseUrl}/${verification.licenseFront}` : null,
+      licenseBack: verification.licenseBack ? `${baseUrl}/${verification.licenseBack}` : null,
+      vehicleRegistration: verification.vehicleRegistration ? `${baseUrl}/${verification.vehicleRegistration}` : null,
+      profileImage: verification.profileImage ? `${baseUrl}/${verification.profileImage}` : null,
+    };
+  });
 
-      return {
-        ...doc,
-        idFront: doc.idFront ? `${baseUrl}/${doc.idFront}` : null,
-        licenseFront: doc.licenseFront ? `${baseUrl}/${doc.licenseFront}` : null,
-        licenseBack: doc.licenseBack ? `${baseUrl}/${doc.licenseBack}` : null,
-        vehicleRegistration: doc.vehicleRegistration ? `${baseUrl}/${doc.vehicleRegistration}` : null,
-        insurance: doc.insurance ? `${baseUrl}/${doc.insurance}` : null,
-        profileImage: doc.profileImage ? `${baseUrl}/${doc.profileImage}` : null,
-      };
-    });
-
-    res.json(formatted);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  res.json(processedList);
 });
 
 // POST /api/verification/action
@@ -110,3 +105,4 @@ router.post('/action', async (req, res) => {
 });
 
 module.exports = router;
+
