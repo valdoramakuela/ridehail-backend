@@ -19,7 +19,7 @@ const rideSchema = new mongoose.Schema({
     address: { type: String, default: '' }
   },
   
-  // Destination details
+  // Destination details  
   dropoff: {
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
@@ -55,7 +55,7 @@ const rideSchema = new mongoose.Schema({
     default: 'requested' 
   },
   
-  // Timestamps
+  // Timestamps for different stages
   requestedAt: { type: Date, default: Date.now },
   acceptedAt: { type: Date },
   arrivedAt: { type: Date },
@@ -98,7 +98,7 @@ const rideSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for performance
+// Indexes for efficient queries
 rideSchema.index({ riderId: 1, createdAt: -1 });
 rideSchema.index({ driverId: 1, createdAt: -1 });
 rideSchema.index({ status: 1, createdAt: -1 });
