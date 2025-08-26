@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
-    unique: true,
+    unique: true,  // Remove this line if you keep the schema.index() below
     lowercase: true,
     trim: true,
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
@@ -23,11 +23,11 @@ const userSchema = new mongoose.Schema({
     maxlength: 100
   },
   
-  // Contact info (keep your existing phone field)
+  // Contact info
   phone: { 
     type: String, 
     required: true,
-    unique: true,
+    unique: true,  // Remove this line if you keep the schema.index() below
     trim: true
   },
   
@@ -62,7 +62,7 @@ const userSchema = new mongoose.Schema({
     default: 0
   },
   
-  // Location (keep your existing structure but enhance it)
+  // Location
   location: {
     type: { 
       type: String, 
@@ -74,7 +74,7 @@ const userSchema = new mongoose.Schema({
     }
   },
   
-  // Push notifications (keep your existing token field but rename for clarity)
+  // Push notifications
   pushToken: {
     type: String,
     default: ''
@@ -100,7 +100,7 @@ const userSchema = new mongoose.Schema({
     default: ''
   },
   
-  // Driver vehicle info (can be moved to separate model later)
+  // Driver vehicle info
   vehicle: {
     model: { type: String, default: '' },
     plateNumber: { type: String, default: '' },
@@ -111,10 +111,10 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Keep your existing indexes and add new ones
+// Define indexes only once using schema.index()
 userSchema.index({ location: "2dsphere" });
-userSchema.index({ email: 1 });
-userSchema.index({ phone: 1 });
+userSchema.index({ email: 1 }, { unique: true });
+userSchema.index({ phone: 1 }, { unique: true });
 userSchema.index({ role: 1, online: 1 });
 userSchema.index({ role: 1, isVerified: 1 });
 
