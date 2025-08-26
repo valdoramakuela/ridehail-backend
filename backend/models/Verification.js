@@ -17,31 +17,32 @@ const verificationSchema = new mongoose.Schema({
   },
   vehicleModel: {
     type: String,
-    required: true
+    default: ''
   },
   plateNumber: {
     type: String,
-    required: true
+    default: ''
   },
+  // Make image fields optional but recommended
   idFront: {
-    type: String, // filename of uploaded image
-    required: true
+    type: String,
+    default: ''
   },
   licenseFront: {
-    type: String, // filename of uploaded image
-    required: true
+    type: String,
+    default: ''
   },
   licenseBack: {
-    type: String, // filename of uploaded image
-    required: true
+    type: String,
+    default: ''
   },
   vehicleRegistration: {
-    type: String, // filename of uploaded image
-    required: true
+    type: String,
+    default: ''
   },
   profileImage: {
-    type: String, // filename of uploaded image
-    required: true
+    type: String,
+    default: ''
   },
   status: {
     type: String,
