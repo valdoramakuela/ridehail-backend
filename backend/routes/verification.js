@@ -72,6 +72,11 @@ router.get('/pending', async (req, res) => {
     return {
       ...doc,
       idFront: doc.idFront ? `${baseUrl}/${doc.idFront}` : null,
+      licenseFront: doc.licenseFront ? `${baseUrl}/${doc.licenseFront}` : null,
+      licenseBack: doc.licenseBack ? `${baseUrl}/${doc.licenseBack}` : null,
+      vehicleRegistration: doc.vehicleRegistration ? `${baseUrl}/${doc.vehicleRegistration}` : null,
+      insurance: doc.insurance ? `${baseUrl}/${doc.insurance}` : null,
+      profileImage: doc.profileImage ? `${baseUrl}/${doc.profileImage}` : null,
     };
   });
 
@@ -103,5 +108,6 @@ router.post('/action', async (req, res) => {
 });
 
 module.exports = router;
+
 
 
