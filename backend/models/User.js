@@ -1,4 +1,4 @@
-// models/User.js
+// backend/models/User.js
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
@@ -8,7 +8,8 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true,
     lowercase: true,
-    trim: true
+    trim: true,
+    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
   },
   password: {
     type: String,
@@ -18,14 +19,16 @@ const userSchema = new mongoose.Schema({
   fullName: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
+    maxlength: 100
   },
   
-  // Contact info
+  // Contact info (keep your existing phone field)
   phone: { 
     type: String, 
+    required: true,
     unique: true,
-    required: true
+    trim: true
   },
   
   // User type
@@ -54,8 +57,12 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  totalEarnings: {
+    type: Number,
+    default: 0
+  },
   
-  // Location
+  // Location (keep your existing structure but enhance it)
   location: {
     type: { 
       type: String, 
@@ -67,7 +74,7 @@ const userSchema = new mongoose.Schema({
     }
   },
   
-  // Push notifications
+  // Push notifications (keep your existing token field but rename for clarity)
   pushToken: {
     type: String,
     default: ''
@@ -78,18 +85,37 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  isSuspended: {
+    type: Boolean,
+    default: false
+  },
   lastSeen: {
     type: Date,
     default: Date.now
+  },
+  
+  // Profile
+  profileImage: {
+    type: String,
+    default: ''
+  },
+  
+  // Driver vehicle info (can be moved to separate model later)
+  vehicle: {
+    model: { type: String, default: '' },
+    plateNumber: { type: String, default: '' },
+    color: { type: String, default: '' },
+    year: { type: Number }
   }
 }, {
   timestamps: true
 });
 
-// Indexes for performance
+// Keep your existing indexes and add new ones
 userSchema.index({ location: "2dsphere" });
 userSchema.index({ email: 1 });
 userSchema.index({ phone: 1 });
 userSchema.index({ role: 1, online: 1 });
+userSchema.index({ role: 1, isVerified: 1 });
 
 module.exports = mongoose.model('User', userSchema);
