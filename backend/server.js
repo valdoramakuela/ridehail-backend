@@ -18,6 +18,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/driver', require('./routes/driver'));
 app.use('/api/verification', require('./routes/verification'));
 
+app.use('/api/rider', require('./routes/rider'));
+app.use('/api/ride', require('./routes/ride')); // Update the path
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
@@ -122,6 +124,7 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
 
 
 
