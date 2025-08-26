@@ -60,24 +60,22 @@ router.post('/submit', upload.fields([
 });
 
 // GET /api/verification/pending
-const BACKEND_URL = 'https://ridehail-backend.onrender.com'; // ← Your Render URL
+const BACKEND_URL = 'https://ridehail-backend.onrender.com';
 
 router.get('/pending', async (req, res) => {
   const list = await Verification.find({ status: 'pending' });
 
-  const processedList = list.map(verification => {
+  const formatted = list.map(v => {
+    const doc = v.toObject();
     const baseUrl = `${BACKEND_URL}/uploads`;
+
     return {
-      ...verification.toObject(),
-      idFront: verification.idFront ? `${baseUrl}/${verification.idFront}` : null,
-      licenseFront: verification.licenseFront ? `${baseUrl}/${verification.licenseFront}` : null,
-      licenseBack: verification.licenseBack ? `${baseUrl}/${verification.licenseBack}` : null,
-      vehicleRegistration: verification.vehicleRegistration ? `${baseUrl}/${verification.vehicleRegistration}` : null,
-      profileImage: verification.profileImage ? `${baseUrl}/${verification.profileImage}` : null,
+      ...doc,
+      idFront: doc.idFront ? `${baseUrl}/${doc.idFront}` : null,
     };
   });
 
-  res.json(processedList);
+  res.json(formatted);
 });
 
 // POST /api/verification/action
@@ -105,4 +103,5 @@ router.post('/action', async (req, res) => {
 });
 
 module.exports = router;
+
 
