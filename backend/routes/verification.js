@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const Verification = require('../models/Verification');
 const upload = require('../middleware/upload');
+const User = require('../models/User');
 
 // Debug middleware to log all incoming requests
 router.use((req, res, next) => {
@@ -158,9 +159,10 @@ router.get('/pending', async (req, res) => {
 });
 
 // Update verification status (approve/reject)
+// In your routes/verification.js file, replace the /action endpoint with this:
+
 router.post('/action', async (req, res) => {
   try {
-    console.log('🔄 Updating verification status:', req.body);
     const { id, status } = req.body;
     
     if (!['approved', 'rejected'].includes(status)) {
@@ -170,9 +172,10 @@ router.post('/action', async (req, res) => {
       });
     }
 
+    // Find and update the verification record
     const verification = await Verification.findByIdAndUpdate(
       id,
-      { status, reviewedAt: new Date() },
+      { status },
       { new: true }
     );
 
@@ -183,7 +186,20 @@ router.post('/action', async (req, res) => {
       });
     }
 
-    console.log('✅ Verification status updated:', verification._id, 'to', status);
+    // IMPORTANT: Also update the user's verification status
+    const User = require('../models/User'); // Make sure this import is at the top of your file
+    
+    if (status === 'approved') {
+      await User.findByIdAndUpdate(verification.userId, { 
+        isVerified: true 
+      });
+      console.log(`User ${verification.userId} marked as verified`);
+    } else if (status === 'rejected') {
+      await User.findByIdAndUpdate(verification.userId, { 
+        isVerified: false 
+      });
+      console.log(`User ${verification.userId} marked as not verified`);
+    }
 
     res.json({
       success: true,
@@ -263,3 +279,4 @@ router.get('/:id', async (req, res) => {
 });
 
 module.exports = router;
+
