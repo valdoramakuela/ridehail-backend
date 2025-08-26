@@ -4,18 +4,54 @@ const router = express.Router();
 const Verification = require('../models/Verification');
 const upload = require('../middleware/upload');
 
-// Submit driver verification with file uploads
-router.post('/submit', upload.fields([
-  { name: 'idFront', maxCount: 1 },
-  { name: 'licenseFront', maxCount: 1 },
-  { name: 'licenseBack', maxCount: 1 },
-  { name: 'vehicleRegistration', maxCount: 1 },
-  { name: 'profileImage', maxCount: 1 }
-]), async (req, res) => {
-  try {
-    console.log('Request body:', req.body);
-    console.log('Request files:', req.files);
+// Debug middleware to log all incoming requests
+router.use((req, res, next) => {
+  console.log(`📡 ${req.method} ${req.path}`);
+  console.log('Headers:', req.headers['content-type']);
+  next();
+});
 
+// Submit driver verification with file uploads
+router.post('/submit', (req, res, next) => {
+  console.log('🚀 Starting verification submission...');
+  
+  // Use the multer middleware with proper error handling
+  const uploadMiddleware = upload.fields([
+    { name: 'idFront', maxCount: 1 },
+    { name: 'licenseFront', maxCount: 1 },
+    { name: 'licenseBack', maxCount: 1 },
+    { name: 'vehicleRegistration', maxCount: 1 },
+    { name: 'profileImage', maxCount: 1 }
+  ]);
+  
+  uploadMiddleware(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer error:', err);
+      
+      if (err.code === 'UNEXPECTED_FIELD') {
+        return res.status(400).json({
+          success: false,
+          error: `Unexpected field: ${err.field}. Expected fields: idFront, licenseFront, licenseBack, vehicleRegistration, profileImage`
+        });
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: err.message
+      });
+    }
+    
+    // Continue with the actual processing
+    processVerification(req, res);
+  });
+});
+
+async function processVerification(req, res) {
+  try {
+    console.log('📋 Processing verification...');
+    console.log('Body:', req.body);
+    console.log('Files received:', Object.keys(req.files || {}));
+    
     const {
       userId,
       fullName,
@@ -45,48 +81,58 @@ router.post('/submit', upload.fields([
     // Add file paths if files were uploaded
     if (req.files?.idFront && req.files.idFront[0]) {
       verificationData.idFront = req.files.idFront[0].filename;
+      console.log('✅ ID Front uploaded:', verificationData.idFront);
     }
     if (req.files?.licenseFront && req.files.licenseFront[0]) {
       verificationData.licenseFront = req.files.licenseFront[0].filename;
+      console.log('✅ License Front uploaded:', verificationData.licenseFront);
     }
     if (req.files?.licenseBack && req.files.licenseBack[0]) {
       verificationData.licenseBack = req.files.licenseBack[0].filename;
+      console.log('✅ License Back uploaded:', verificationData.licenseBack);
     }
     if (req.files?.vehicleRegistration && req.files.vehicleRegistration[0]) {
       verificationData.vehicleRegistration = req.files.vehicleRegistration[0].filename;
+      console.log('✅ Vehicle Registration uploaded:', verificationData.vehicleRegistration);
     }
     if (req.files?.profileImage && req.files.profileImage[0]) {
       verificationData.profileImage = req.files.profileImage[0].filename;
+      console.log('✅ Profile Image uploaded:', verificationData.profileImage);
     }
 
-    console.log('Verification data to save:', verificationData);
+    console.log('💾 Saving verification data:', verificationData);
 
     const verification = new Verification(verificationData);
     const savedVerification = await verification.save();
+
+    console.log('✅ Verification saved successfully:', savedVerification._id);
 
     res.json({
       success: true,
       verification: savedVerification
     });
   } catch (error) {
-    console.error('Verification submission error:', error);
+    console.error('❌ Verification submission error:', error);
     res.status(500).json({
       success: false,
       error: error.message
     });
   }
-});
+}
 
 // Get all verifications (for admin)
 router.get('/all', async (req, res) => {
   try {
+    console.log('📖 Fetching all verifications...');
     const verifications = await Verification.find().sort({ createdAt: -1 });
+    console.log(`📋 Found ${verifications.length} verifications`);
+    
     res.json({
       success: true,
       verifications
     });
   } catch (error) {
-    console.error('Get verifications error:', error);
+    console.error('❌ Get verifications error:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -114,6 +160,7 @@ router.get('/pending', async (req, res) => {
 // Update verification status (approve/reject)
 router.post('/action', async (req, res) => {
   try {
+    console.log('🔄 Updating verification status:', req.body);
     const { id, status } = req.body;
     
     if (!['approved', 'rejected'].includes(status)) {
@@ -135,6 +182,8 @@ router.post('/action', async (req, res) => {
         error: 'Verification not found'
       });
     }
+
+    console.log('✅ Verification status updated:', verification._id, 'to', status);
 
     res.json({
       success: true,
