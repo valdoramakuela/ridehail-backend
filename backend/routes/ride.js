@@ -1,4 +1,4 @@
-// routes/ride.js
+// routes/ride.js - Corrected Version
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
@@ -6,7 +6,7 @@ const Ride = require('../models/Ride');
 const User = require('../models/User');
 const admin = require('../firebase/admin');
 
-// Request a ride (replaces your current /request)
+// Request a ride
 router.post('/request', authenticateUser, async (req, res) => {
   try {
     const { pickup, dropoff, estimatedFare, estimatedDistance, estimatedDuration } = req.body;
@@ -54,6 +54,34 @@ router.post('/request', authenticateUser, async (req, res) => {
 
     console.log(`Found ${nearbyDrivers.length} nearby drivers for ride ${ride._id}`);
 
+    // Get Socket.io instance
+    const io = req.app.get('io') || global.io;
+
+    // Send ride request to specific drivers (NOT broadcast to all)
+    if (io && nearbyDrivers.length > 0) {
+      const rideRequestData = {
+        rideId: ride._id,
+        pickup: ride.pickup,
+        dropoff: ride.dropoff,
+        estimatedFare: ride.fare.estimated,
+        estimatedDistance: ride.distance.estimated,
+        estimatedDuration: ride.duration.estimated,
+        riderId: req.user.id
+      };
+
+      // Send to each nearby driver specifically
+      nearbyDrivers.forEach(driver => {
+        console.log(`Sending ride request to driver: ${driver._id}`);
+        
+        // Send to multiple room formats for reliability
+        io.to(driver._id.toString()).emit('rideRequest', rideRequestData);
+        io.to(`driver_${driver._id}`).emit('rideRequest', rideRequestData);
+      });
+
+      // Also send to general drivers room as backup
+      io.to('drivers').emit('rideRequest', rideRequestData);
+    }
+
     // Send push notifications to nearby drivers
     for (let driver of nearbyDrivers) {
       if (driver.pushToken) {
@@ -61,7 +89,7 @@ router.post('/request', authenticateUser, async (req, res) => {
           await admin.messaging().send({
             token: driver.pushToken,
             notification: {
-              title: 'New Ride Request! 🚕',
+              title: 'New Ride Request!',
               body: 'Tap to view pickup location'
             },
             data: {
@@ -81,17 +109,6 @@ router.post('/request', authenticateUser, async (req, res) => {
       }
     }
 
-    // Broadcast to all connected clients via Socket.IO
-    if (global.io) {
-      global.io.emit('rideRequest', {
-        rideId: ride._id,
-        pickup: pickup,
-        dropoff: dropoff,
-        estimatedFare: estimatedFare,
-        riderId: req.user.id
-      });
-    }
-
     res.status(201).json({
       success: true,
       message: 'Ride requested successfully',
@@ -108,7 +125,7 @@ router.post('/request', authenticateUser, async (req, res) => {
   }
 });
 
-// Accept ride (replaces your current /accept)
+// Accept ride
 router.post('/accept', authenticateDriver, async (req, res) => {
   try {
     const { rideId } = req.body;
@@ -145,13 +162,34 @@ router.post('/accept', authenticateDriver, async (req, res) => {
     ride.acceptedAt = new Date();
     await ride.save();
 
+    // Get Socket.io instance
+    const io = req.app.get('io') || global.io;
+
+    // Notify rider via Socket.IO
+    if (io) {
+      const acceptData = {
+        rideId: rideId,
+        status: 'accepted',
+        driver: {
+          id: driver._id,
+          name: driver.fullName,
+          phone: driver.phone,
+          rating: driver.rating
+        }
+      };
+
+      // Send to specific rider
+      io.to(ride.riderId._id.toString()).emit('rideAccepted', acceptData);
+      io.to(`rider_${ride.riderId._id}`).emit('rideAccepted', acceptData);
+    }
+
     // Send push notification to rider
     if (ride.riderId.pushToken) {
       try {
         await admin.messaging().send({
           token: ride.riderId.pushToken,
           notification: {
-            title: 'Ride Accepted! 🚖',
+            title: 'Ride Accepted!',
             body: `${driver.fullName} is on the way to pick you up!`
           },
           data: {
@@ -165,20 +203,6 @@ router.post('/accept', authenticateDriver, async (req, res) => {
       } catch (error) {
         console.error('Error sending push notification to rider:', error);
       }
-    }
-
-    // Notify via Socket.IO
-    if (global.io) {
-      global.io.emit('rideAccepted', { 
-        rideId: rideId, 
-        driver: {
-          id: driver._id,
-          name: driver.fullName,
-          phone: driver.phone,
-          rating: driver.rating
-        },
-        riderId: ride.riderId._id
-      });
     }
 
     res.json({
@@ -202,70 +226,109 @@ router.post('/accept', authenticateDriver, async (req, res) => {
   }
 });
 
-// In your ride routes file (e.g., routes/rides.js)
-router.post('/ride/:rideId/cancel', async (req, res) => {
+// FIXED: Cancel ride endpoint with proper authentication
+router.post('/:rideId/cancel', authenticateUser, async (req, res) => {
   try {
     const { rideId } = req.params;
     const { reason } = req.body;
-    const userId = req.user.id; // From auth middleware
+    const userId = req.user.id;
+    
+    console.log(`Cancel ride request: ${rideId} by user: ${userId}`);
     
     // Find the ride
     const ride = await Ride.findById(rideId);
     
     if (!ride) {
-      return res.status(404).json({ error: 'Ride not found' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'Ride not found' 
+      });
     }
     
     // Check if user can cancel (rider or driver)
     if (ride.riderId.toString() !== userId && ride.driverId?.toString() !== userId) {
-      return res.status(403).json({ error: 'Not authorized to cancel this ride' });
+      return res.status(403).json({ 
+        success: false,
+        error: 'Not authorized to cancel this ride' 
+      });
     }
     
     // Check if ride can be cancelled
     if (['completed', 'cancelled'].includes(ride.status)) {
-      return res.status(400).json({ error: 'Cannot cancel completed or already cancelled ride' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Cannot cancel completed or already cancelled ride' 
+      });
     }
     
     // Update ride status
     ride.status = 'cancelled';
     ride.cancelledBy = userId;
-    ride.cancellationReason = reason;
+    ride.cancellationReason = reason || 'No reason provided';
     ride.cancelledAt = new Date();
     
     await ride.save();
     
-    // Emit socket events to notify other party
-    const io = req.app.get('io'); // Assuming you have socket.io attached to app
+    // Get Socket.io instance
+    const io = req.app.get('io') || global.io;
     
-    if (ride.driverId && ride.driverId.toString() !== userId) {
-      io.to(ride.driverId.toString()).emit('rideCancelled', {
+    if (io) {
+      const isRiderCancelling = ride.riderId.toString() === userId;
+      
+      const cancelData = {
         rideId: ride._id,
-        reason,
-        cancelledBy: 'rider'
-      });
+        reason: reason || 'Ride cancelled',
+        cancelledBy: isRiderCancelling ? 'rider' : 'driver',
+        timestamp: Date.now()
+      };
+
+      // Notify the other party
+      if (ride.driverId && ride.driverId.toString() !== userId) {
+        // Notify driver
+        io.to(ride.driverId.toString()).emit('rideCancelled', cancelData);
+        io.to(`driver_${ride.driverId}`).emit('rideCancelled', cancelData);
+      }
+      
+      if (ride.riderId.toString() !== userId) {
+        // Notify rider
+        io.to(ride.riderId.toString()).emit('rideCancelled', cancelData);
+        io.to(`rider_${ride.riderId}`).emit('rideCancelled', cancelData);
+      }
     }
     
-    if (ride.riderId.toString() !== userId) {
-      io.to(ride.riderId.toString()).emit('rideCancelled', {
-        rideId: ride._id,
-        reason,
-        cancelledBy: 'driver'
-      });
-    }
+    console.log(`Ride ${rideId} cancelled successfully`);
     
     res.json({
       success: true,
       message: 'Ride cancelled successfully',
-      ride
+      ride: {
+        _id: ride._id,
+        status: ride.status,
+        cancelledBy: ride.riderId.toString() === userId ? 'rider' : 'driver',
+        cancelledAt: ride.cancelledAt,
+        reason: ride.cancellationReason
+      }
     });
     
   } catch (error) {
     console.error('Cancel ride error:', error);
-    res.status(500).json({ error: 'Failed to cancel ride' });
+    
+    // Handle specific error types
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid ride ID format' 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to cancel ride. Please try again.' 
+    });
   }
 });
 
-// Update ride status (new endpoint)
+// Update ride status
 router.patch('/:rideId/status', authenticateDriver, async (req, res) => {
   try {
     const { rideId } = req.params;
@@ -315,13 +378,28 @@ router.patch('/:rideId/status', authenticateDriver, async (req, res) => {
 
     await ride.save();
 
+    // Get Socket.io instance
+    const io = req.app.get('io') || global.io;
+
+    // Notify rider via Socket.IO
+    if (io) {
+      const statusData = {
+        rideId: rideId,
+        status: status,
+        timestamp: Date.now()
+      };
+
+      io.to(ride.riderId._id.toString()).emit('rideStatusUpdate', statusData);
+      io.to(`rider_${ride.riderId._id}`).emit('rideStatusUpdate', statusData);
+    }
+
     // Send push notification to rider
     if (ride.riderId.pushToken) {
       const messages = {
-        arrived: 'Your driver has arrived! 🚗',
-        started: 'Your ride has started! 🛣️',
-        completed: 'Ride completed! Thank you! ⭐',
-        cancelled: 'Your ride has been cancelled 😔'
+        arrived: 'Your driver has arrived!',
+        started: 'Your ride has started!',
+        completed: 'Ride completed! Thank you!',
+        cancelled: 'Your ride has been cancelled'
       };
 
       try {
@@ -342,15 +420,6 @@ router.patch('/:rideId/status', authenticateDriver, async (req, res) => {
       }
     }
 
-    // Notify via Socket.IO
-    if (global.io) {
-      global.io.emit('rideStatusUpdate', {
-        rideId: rideId,
-        status: status,
-        riderId: ride.riderId._id
-      });
-    }
-
     res.json({
       success: true,
       message: `Ride ${status} successfully`,
@@ -366,7 +435,7 @@ router.patch('/:rideId/status', authenticateDriver, async (req, res) => {
   }
 });
 
-// Get active rides (enhanced version)
+// Get active rides
 router.get('/active', authenticateUser, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -402,7 +471,7 @@ router.get('/active', authenticateUser, async (req, res) => {
   }
 });
 
-// Get ride history (enhanced version)
+// Get ride history
 router.get('/history/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -525,7 +594,7 @@ function authenticateDriver(req, res, next) {
     req.user = decoded;
     next();
   } catch (error) {
-    res.status(401).json({
+    res.status(401.json({
       success: false,
       error: 'Token is not valid'
     });
@@ -533,4 +602,3 @@ function authenticateDriver(req, res, next) {
 }
 
 module.exports = router;
-
