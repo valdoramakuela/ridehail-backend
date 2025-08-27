@@ -594,7 +594,7 @@ function authenticateDriver(req, res, next) {
     req.user = decoded;
     next();
   } catch (error) {
-    res.status(401.json({
+    res.status(401).json({
       success: false,
       error: 'Token is not valid'
     });
