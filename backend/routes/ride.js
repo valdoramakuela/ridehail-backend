@@ -202,6 +202,69 @@ router.post('/accept', authenticateDriver, async (req, res) => {
   }
 });
 
+// In your ride routes file (e.g., routes/rides.js)
+router.post('/ride/:rideId/cancel', async (req, res) => {
+  try {
+    const { rideId } = req.params;
+    const { reason } = req.body;
+    const userId = req.user.id; // From auth middleware
+    
+    // Find the ride
+    const ride = await Ride.findById(rideId);
+    
+    if (!ride) {
+      return res.status(404).json({ error: 'Ride not found' });
+    }
+    
+    // Check if user can cancel (rider or driver)
+    if (ride.riderId.toString() !== userId && ride.driverId?.toString() !== userId) {
+      return res.status(403).json({ error: 'Not authorized to cancel this ride' });
+    }
+    
+    // Check if ride can be cancelled
+    if (['completed', 'cancelled'].includes(ride.status)) {
+      return res.status(400).json({ error: 'Cannot cancel completed or already cancelled ride' });
+    }
+    
+    // Update ride status
+    ride.status = 'cancelled';
+    ride.cancelledBy = userId;
+    ride.cancellationReason = reason;
+    ride.cancelledAt = new Date();
+    
+    await ride.save();
+    
+    // Emit socket events to notify other party
+    const io = req.app.get('io'); // Assuming you have socket.io attached to app
+    
+    if (ride.driverId && ride.driverId.toString() !== userId) {
+      io.to(ride.driverId.toString()).emit('rideCancelled', {
+        rideId: ride._id,
+        reason,
+        cancelledBy: 'rider'
+      });
+    }
+    
+    if (ride.riderId.toString() !== userId) {
+      io.to(ride.riderId.toString()).emit('rideCancelled', {
+        rideId: ride._id,
+        reason,
+        cancelledBy: 'driver'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Ride cancelled successfully',
+      ride
+    });
+    
+  } catch (error) {
+    console.error('Cancel ride error:', error);
+    res.status(500).json({ error: 'Failed to cancel ride' });
+  }
+});
+
 // Update ride status (new endpoint)
 router.patch('/:rideId/status', authenticateDriver, async (req, res) => {
   try {
@@ -470,3 +533,4 @@ function authenticateDriver(req, res, next) {
 }
 
 module.exports = router;
+
