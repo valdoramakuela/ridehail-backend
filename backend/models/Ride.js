@@ -89,6 +89,8 @@ const rideSchema = new mongoose.Schema({
       'driver_cancelled',
       'no_driver_found',
       'payment_failed',
+      'long_pickup_time',
+      'rider_not_found_at_pickup',
       'other'
     ]
   },
@@ -104,3 +106,4 @@ rideSchema.index({ driverId: 1, createdAt: -1 });
 rideSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Ride', rideSchema);
+
