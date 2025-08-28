@@ -227,13 +227,53 @@ router.post('/accept', authenticateDriver, async (req, res) => {
 });
 
 // FIXED: Cancel ride endpoint with proper authentication
+// In your routes/ride.js - Enhanced cancel endpoint with enum validation
+
+// FIXED: Cancel ride endpoint with proper enum validation
 router.post('/:rideId/cancel', authenticateUser, async (req, res) => {
   try {
     const { rideId } = req.params;
     const { reason } = req.body;
     const userId = req.user.id;
     
-    console.log(`Cancel ride request: ${rideId} by user: ${userId}`);
+    console.log(`Cancel ride request: ${rideId} by user: ${userId} with reason: ${reason}`);
+    
+    // Validate required reason
+    if (!reason) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Cancellation reason is required',
+        availableReasons: [
+          'rider_cancelled',
+          'driver_cancelled', 
+          'no_driver_found',
+          'payment_failed',
+          'long_pickup_time',
+          'rider_not_found_at_pickup',
+          'other'
+        ]
+      });
+    }
+
+    // Validate reason against enum
+    const validReasons = [
+      'rider_cancelled',
+      'driver_cancelled',
+      'no_driver_found', 
+      'payment_failed',
+      'long_pickup_time',
+      'rider_not_found_at_pickup',
+      'other'
+    ];
+
+    if (!validReasons.includes(reason)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid cancellation reason',
+        providedReason: reason,
+        validReasons: validReasons
+      });
+    }
     
     // Find the ride
     const ride = await Ride.findById(rideId);
@@ -257,15 +297,35 @@ router.post('/:rideId/cancel', authenticateUser, async (req, res) => {
     if (['completed', 'cancelled'].includes(ride.status)) {
       return res.status(400).json({ 
         success: false,
-        error: 'Cannot cancel completed or already cancelled ride' 
+        error: 'Cannot cancel completed or already cancelled ride',
+        currentStatus: ride.status
       });
+    }
+    
+    // Determine who is cancelling and validate reason
+    const isRiderCancelling = ride.riderId.toString() === userId;
+    const isDriverCancelling = ride.driverId && ride.driverId.toString() === userId;
+
+    // Auto-correct reason based on who is cancelling
+    let finalReason = reason;
+    if (isRiderCancelling && reason === 'driver_cancelled') {
+      finalReason = 'rider_cancelled';
+    } else if (isDriverCancelling && reason === 'rider_cancelled') {
+      finalReason = 'driver_cancelled';
     }
     
     // Update ride status
     ride.status = 'cancelled';
     ride.cancelledBy = userId;
-    ride.cancellationReason = reason || 'No reason provided';
+    ride.cancellationReason = finalReason;
     ride.cancelledAt = new Date();
+    
+    // Add cancellation details to comments
+    if (isRiderCancelling) {
+      ride.riderComment = `Cancelled: ${finalReason}`;
+    } else if (isDriverCancelling) {
+      ride.driverComment = `Cancelled: ${finalReason}`;
+    }
     
     await ride.save();
     
@@ -273,11 +333,9 @@ router.post('/:rideId/cancel', authenticateUser, async (req, res) => {
     const io = req.app.get('io') || global.io;
     
     if (io) {
-      const isRiderCancelling = ride.riderId.toString() === userId;
-      
       const cancelData = {
         rideId: ride._id,
-        reason: reason || 'Ride cancelled',
+        reason: finalReason,
         cancelledBy: isRiderCancelling ? 'rider' : 'driver',
         timestamp: Date.now()
       };
@@ -287,16 +345,18 @@ router.post('/:rideId/cancel', authenticateUser, async (req, res) => {
         // Notify driver
         io.to(ride.driverId.toString()).emit('rideCancelled', cancelData);
         io.to(`driver_${ride.driverId}`).emit('rideCancelled', cancelData);
+        console.log(`Sent cancellation notice to driver: ${ride.driverId}`);
       }
       
       if (ride.riderId.toString() !== userId) {
         // Notify rider
         io.to(ride.riderId.toString()).emit('rideCancelled', cancelData);
         io.to(`rider_${ride.riderId}`).emit('rideCancelled', cancelData);
+        console.log(`Sent cancellation notice to rider: ${ride.riderId}`);
       }
     }
     
-    console.log(`Ride ${rideId} cancelled successfully`);
+    console.log(`Ride ${rideId} cancelled successfully by ${isRiderCancelling ? 'rider' : 'driver'} with reason: ${finalReason}`);
     
     res.json({
       success: true,
@@ -304,9 +364,9 @@ router.post('/:rideId/cancel', authenticateUser, async (req, res) => {
       ride: {
         _id: ride._id,
         status: ride.status,
-        cancelledBy: ride.riderId.toString() === userId ? 'rider' : 'driver',
+        cancelledBy: isRiderCancelling ? 'rider' : 'driver',
         cancelledAt: ride.cancelledAt,
-        reason: ride.cancellationReason
+        cancellationReason: finalReason
       }
     });
     
@@ -320,14 +380,70 @@ router.post('/:rideId/cancel', authenticateUser, async (req, res) => {
         error: 'Invalid ride ID format' 
       });
     }
+
+    // Handle Mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        details: validationErrors
+      });
+    }
     
     res.status(500).json({ 
       success: false,
-      error: 'Failed to cancel ride. Please try again.' 
+      error: 'Failed to cancel ride. Please try again.',
+      details: error.message
     });
   }
 });
 
+// GET endpoint to get available cancellation reasons
+router.get('/cancellation-reasons', authenticateUser, (req, res) => {
+  const reasons = [
+    {
+      value: 'rider_cancelled',
+      label: 'Changed my mind',
+      applicableFor: ['rider']
+    },
+    {
+      value: 'driver_cancelled', 
+      label: 'Driver cancelled',
+      applicableFor: ['driver']
+    },
+    {
+      value: 'long_pickup_time',
+      label: 'Driver taking too long',
+      applicableFor: ['rider']
+    },
+    {
+      value: 'payment_failed',
+      label: 'Payment issues', 
+      applicableFor: ['rider', 'driver']
+    },
+    {
+      value: 'no_driver_found',
+      label: 'No driver found',
+      applicableFor: ['system']
+    },
+    {
+      value: 'rider_not_found_at_pickup',
+      label: 'Rider not found at pickup',
+      applicableFor: ['driver']
+    },
+    {
+      value: 'other',
+      label: 'Other reason',
+      applicableFor: ['rider', 'driver']
+    }
+  ];
+
+  res.json({
+    success: true,
+    reasons: reasons
+  });
+});
 // Update ride status
 router.patch('/:rideId/status', authenticateDriver, async (req, res) => {
   try {
@@ -602,3 +718,4 @@ function authenticateDriver(req, res, next) {
 }
 
 module.exports = router;
+
